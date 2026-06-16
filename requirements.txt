@@ -1,0 +1,6 @@
+numpy
+matplotlib
+scipy
+gymnasium  # (or gym, if you prefer the older API for your envs)
+omegaconf  # (or hydra-core, for your yaml configs)
+jupyter
