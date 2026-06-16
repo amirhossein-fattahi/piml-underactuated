@@ -41,13 +41,13 @@ cd piml-underactuated
 **2. Create and activate the virtual environment**
 ```bash
 python -m venv venv
-```
+
 # On macOS/Linux:
 source venv/bin/activate
 
 # On Windows:
-# venv\Scripts\activate
-
+venv\Scripts\activate
+```
 **3. Install dependencies**
 First, install PyTorch (adjust the CUDA version based on your hardware if you are using a GPU):
 ```bash
