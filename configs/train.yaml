@@ -1,0 +1,36 @@
+# configs/train.yaml
+
+# These defaults tell Hydra to look in the envs/ and models/ folders
+defaults:
+  - env: acrobot      # Loads configs/envs/acrobot.yaml by default
+  - model: lnn        # Loads configs/models/lnn.yaml by default
+  - _self_            # This is required by Hydra to allow overriding
+
+# General training hyperparameters
+seed: 42
+epochs: 500
+batch_size: 256
+learning_rate: 1e-3
+
+# Data generation settings
+dt: 0.01
+data:
+  num_episodes: 40       # number of short trajectories collected
+  episode_length: 200    # steps per trajectory
+  test_split: 0.2        # held-out fraction for one-step accuracy (Axis 1)
+
+# Evaluation settings (Axes 2 & 3: rollout stability and energy drift)
+eval:
+  horizon: 200           # rollout length in steps
+  n_rollouts: 5          # number of free-swing (zero-torque) rollouts to average
+
+# Logging
+project_name: "piml-underactuated"
+experiment_name: "${model.name}_on_${env.name}"
+
+# Keep Hydra from changing the working directory / creating run folders,
+# so all artifacts land under the repo's own data/ and outputs/ dirs.
+hydra:
+  run:
+    dir: .
+  output_subdir: null

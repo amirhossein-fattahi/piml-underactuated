@@ -1,0 +1,10 @@
+# configs/models/mlp.yaml
+name: "Vanilla_MLP"
+type: "black_box"
+
+# Network architecture
+hidden_layers: [128, 128, 128]
+activation: "ReLU" # PyTorch activation function
+
+# Since it's a standard MLP predicting next state or accelerations
+output_dim: 4

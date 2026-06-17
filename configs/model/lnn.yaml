@@ -1,0 +1,11 @@
+# configs/models/lnn.yaml
+name: "Lagrangian_NN"
+type: "physics_informed"
+
+# Network architecture for the Lagrangian (L = T - V)
+hidden_layers: [64, 64]
+activation: "Softplus" # Softplus is better for LNNs because it is smooth/twice-differentiable!
+
+# LNN specific settings
+learn_mass_matrix: true
+learn_potential_energy: true

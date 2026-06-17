@@ -1,6 +1,6 @@
 # piml-underactuated 🤖⚙️
 
-Hello! This is the official repository for my Master's thesis project in Control Systems Engineering at the University of Padua. 
+Hello! This is the repository for an extension of my Master's thesis project in Control Systems Engineering at the University of Padua. 
 
 The main goal of this project is to compare physics-informed machine learning (PiML) models with standard "black-box" neural networks. Specifically, I am looking at how well these models learn the dynamics of underactuated robots, and how useful they are for downstream tasks like energy-based swing-up control.
 

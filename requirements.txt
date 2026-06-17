@@ -1,6 +1,12 @@
+# requirements.txt
+# NOTE: install PyTorch separately first (see README) to match your CUDA/CPU build.
+torch
 numpy
 matplotlib
 scipy
 gymnasium  # (or gym, if you prefer the older API for your envs)
+hydra-core
 omegaconf  # (or hydra-core, for your yaml configs)
 jupyter
+pytest
+# gpytorch   # uncomment in Phase 2 for the vanilla GP and Lagrangian-GP models

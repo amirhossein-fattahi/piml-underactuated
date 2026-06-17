@@ -1,0 +1,19 @@
+# Ignore local data
+data/
+
+# Ignore generated experiment outputs (models, results, figures, hydra logs)
+outputs/
+
+# Ignore Python virtual environments
+venv/
+env/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore Mac system files (if you use macOS)
+.DS_Store
