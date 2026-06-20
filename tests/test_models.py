@@ -3,6 +3,32 @@ import torch
 from src.models.mlp import VanillaMLP
 from src.models.lnn import LagrangianNN
 
+
+def test_lnn_conserves_its_own_energy():
+    """
+    Structural guarantee of the Euler-Lagrange formulation: with zero input a
+    conservative Lagrangian system conserves total energy. An *untrained* LNN
+    must therefore keep its own get_energy() nearly constant along a free
+    rollout -- this verifies the autograd Coriolis/gravity solver is correct,
+    independent of any fitting.
+    """
+    torch.manual_seed(0)
+    cfg = {"state_dim": 4, "action_dim": 1, "dt": 0.01, "actuation": [0.0, 1.0]}
+    lnn = LagrangianNN(cfg)
+    lnn.eval()
+
+    state = torch.tensor([0.3, -0.2, 0.4, -0.3])
+    zero_action = torch.zeros(1)
+    e0 = lnn.get_energy(state).item()
+    for _ in range(200):
+        state = lnn.predict_next_state(state, zero_action).detach()
+    e1 = lnn.get_energy(state).item()
+
+    assert abs(e1 - e0) < 1e-4, (
+        f"Untrained LNN drifted energy by {abs(e1 - e0):.2e}; the Euler-Lagrange "
+        "solver does not conserve energy and is likely implemented incorrectly."
+    )
+
 def test_model_forward_passes():
     """
     Ensures all models in the zoo accept (state, action) 
@@ -36,5 +62,9 @@ def test_lnn_energy_output():
     
     dummy_state = torch.randn(1, 4)
     energy = lnn.get_energy(dummy_state)
-    
-    assert energy.shape == (1, 1) or energy.dim() == 0, "Energy must be a scalar value."
+
+    assert energy.numel() == 1, "Energy must be one scalar per state."
+
+    # Batched energy: one scalar per state in the batch.
+    batch_energy = lnn.get_energy(torch.randn(16, 4))
+    assert batch_energy.shape == (16,), "Batched energy must have shape (batch,)."

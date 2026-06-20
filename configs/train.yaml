@@ -18,11 +18,13 @@ data:
   num_episodes: 40       # number of short trajectories collected
   episode_length: 200    # steps per trajectory
   test_split: 0.2        # held-out fraction for one-step accuracy (Axis 1)
+  n_train: null          # cap on #training transitions (null = use all); for data-budget sweeps
 
 # Evaluation settings (Axes 2 & 3: rollout stability and energy drift)
 eval:
   horizon: 200           # rollout length in steps
   n_rollouts: 5          # number of free-swing (zero-torque) rollouts to average
+  vpt_threshold: 1.0     # tracking-error cutoff for Valid Prediction Time (Axis 2)
 
 # Logging
 project_name: "piml-underactuated"

@@ -17,5 +17,7 @@ def build_model(cfg):
         "state_dim": cfg.env.state_dim,
         "action_dim": cfg.env.action_dim,
         "dt": cfg.dt,
+        # Known actuation matrix B (physics prior used by structured models).
+        "actuation": list(cfg.env.get("actuation", [0.0, 1.0])),
     }
     return MODEL_REGISTRY[name](model_cfg)

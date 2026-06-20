@@ -61,10 +61,29 @@ pip install -r requirements.txt
 
 ## How to Run
 
+The pipeline has four steps. Configs are managed with Hydra, so you can override
+any setting on the command line (e.g. `model=lnn`, `env=acrobot`, `seed=1`).
+
 ```bash
-# Example of how to run a training experiment:
-python scripts/02_train.py model=lnn env=acrobot
+# 1. Generate a dataset of (state, action, next_state) transitions
+python scripts/generate_data.py env=acrobot
+
+# 2. Train a single model
+python scripts/train.py model=lnn env=acrobot
+
+# 3. Evaluate it on the three dynamics axes (writes a result + figure)
+python scripts/evaluate.py model=lnn env=acrobot
+
+# 4. Or run the whole benchmark grid (models x envs x seeds x data-budgets)
+python scripts/run_experiments.py --models mlp lnn --envs acrobot pendubot \
+    --seeds 0 1 2 --budgets 250 1000 4000 full --epochs 200
+
+# Collect all runs into the comparison table + data-budget sweep figure
+python scripts/aggregate_results.py
 ```
+
+Available models: `mlp` (black-box baseline), `lnn` (Lagrangian Neural Network).
+Outputs (trained weights, per-run metrics, figures) are written under `outputs/`.
 
 ## Contact
 If you have any questions about the code, the implementations, or control systems in general, feel free to reach out or open an issue!
