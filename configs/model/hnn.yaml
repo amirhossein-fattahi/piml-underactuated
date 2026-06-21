@@ -1,0 +1,11 @@
+# configs/model/hnn.yaml
+name: "Hamiltonian_NN"
+type: "physics_informed"
+
+# Network architecture for the scalar Hamiltonian H(q, p)
+hidden_layers: [64, 64]
+activation: "Softplus"   # smooth/twice-differentiable, needed for the autograd flow
+
+# HNN uses canonical coordinates with the identity-mass convention p := q_dot
+# (it does not learn a configuration-dependent mass matrix; the LNN does).
+learn_mass_matrix: false

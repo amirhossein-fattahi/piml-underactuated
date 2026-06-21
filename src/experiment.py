@@ -101,11 +101,21 @@ def split_dataset(dataset, test_split, n_train=None, seed=0):
 # ---------------------------------------------------------------- train/eval
 def train_model(cfg, train_data, verbose=True):
     set_seed(cfg.seed)
+    model = build_model(cfg)
+
+    # GP-style models are fit by marginal likelihood, not gradient descent on a
+    # next-state loss; they expose .fit() and we use that instead of the Adam loop.
+    if hasattr(model, "fit"):
+        if verbose:
+            print("  fitting GP-style model via marginal likelihood ...")
+        model.fit(train_data)
+        model.eval()
+        return model
+
     S, A, NS = train_data
     n = S.shape[0]
     bs = cfg.batch_size
 
-    model = build_model(cfg)
     optimizer = optim.Adam(model.parameters(), lr=cfg.learning_rate)
 
     model.train()

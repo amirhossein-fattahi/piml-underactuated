@@ -1,0 +1,9 @@
+# configs/model/lgp.yaml
+name: "Lagrangian_GP"
+type: "physics_informed"
+
+# Thesis-contribution model: a Lagrangian NN supplies a physics mean and a GP
+# models the residual acceleration it leaves behind.
+kernel: "ard_rbf"
+max_train_points: 1000
+lnn_epochs: 100          # training budget for the internal physics mean

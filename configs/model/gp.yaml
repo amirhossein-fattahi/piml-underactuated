@@ -1,0 +1,8 @@
+# configs/model/gp.yaml
+name: "Vanilla_GP"
+type: "black_box"
+
+# Exact GP with an ARD-RBF kernel, fit by marginal likelihood.
+# Inputs are (sin/cos of angles, velocities, torque); target is acceleration.
+kernel: "ard_rbf"
+max_train_points: 1000   # exact GP is O(n^3); larger budgets are subsampled
