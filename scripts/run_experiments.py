@@ -44,9 +44,15 @@ def main():
     p.add_argument("--seeds", nargs="+", type=int, default=[0, 1])
     p.add_argument("--budgets", nargs="+", default=["250", "1000", "4000"])
     p.add_argument("--epochs", type=int, default=150)
+    p.add_argument("--process_std", type=float, default=0.0,
+                   help="process-noise std (real-world scenario)")
+    p.add_argument("--obs_std", type=float, default=0.0,
+                   help="sensor-noise std (real-world scenario)")
     args = p.parse_args()
 
     budgets = [parse_budget(b) for b in args.budgets]
+    noisy = args.process_std > 0 or args.obs_std > 0
+    noise_label = "noisy" if noisy else "clean"
     runs_dir = REPO_ROOT / "outputs" / "results" / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
     data_dir = REPO_ROOT / "data" / "raw"
@@ -54,18 +60,27 @@ def main():
 
     grid = [(m, e, s, b) for e in args.envs for m in args.models
             for s in args.seeds for b in budgets]
-    print(f"Total runs: {len(grid)}\n")
+    print(f"Total runs: {len(grid)}  (noise: {noise_label})\n")
+
+    # Clean data keeps the plain name (shared with the control script); noisy
+    # data gets its own file so the two conditions never overwrite each other.
+    def data_path(env):
+        return data_dir / (f"{env}_dataset.pt" if not noisy
+                           else f"{env}_noisy_dataset.pt")
 
     with initialize(version_base=None, config_path="../configs"):
-        # Ensure each environment has a dataset (generate once if missing).
         for env in args.envs:
-            path = data_dir / f"{env}_dataset.pt"
+            path = data_path(env)
             if not path.exists():
-                cfg = compose(config_name="train", overrides=[f"env={env}"])
-                print(f"Generating dataset for {env}...")
+                cfg = compose(config_name="train", overrides=[
+                    f"env={env}",
+                    f"data.process_std={args.process_std}",
+                    f"data.obs_std={args.obs_std}",
+                ])
+                print(f"Generating {noise_label} dataset for {env}...")
                 torch.save(generate_dataset(cfg), path)
 
-        datasets = {e: torch.load(data_dir / f"{e}_dataset.pt") for e in args.envs}
+        datasets = {e: torch.load(data_path(e)) for e in args.envs}
 
         for i, (model, env, seed, budget) in enumerate(grid, 1):
             b_over = "null" if budget is None else str(budget)
@@ -80,7 +95,7 @@ def main():
                 datasets[env], cfg.data.test_split, budget, seed
             )
 
-            tag = f"{cfg.model.name}_on_{cfg.env.name}_s{seed}_n{n_used}"
+            tag = f"{cfg.model.name}_on_{cfg.env.name}_{noise_label}_s{seed}_n{n_used}"
             out_file = runs_dir / f"{tag}.json"
             if out_file.exists():
                 print(f"[{i}/{len(grid)}] {tag} -- already done, skipping", flush=True)
@@ -91,6 +106,7 @@ def main():
 
             m = train_model(cfg, train_data, verbose=False)
             results, _ = evaluate_model(cfg, m, test_data, n_used)
+            results["noise"] = noise_label
             out_file.write_text(json.dumps(results, indent=2))
 
             print(f"    one-step={results['one_step_mse']:.2e} "

@@ -19,6 +19,8 @@ data:
   episode_length: 200    # steps per trajectory
   test_split: 0.2        # held-out fraction for one-step accuracy (Axis 1)
   n_train: null          # cap on #training transitions (null = use all); for data-budget sweeps
+  process_std: 0.0       # process noise: std of random state kick each step (real-world)
+  obs_std: 0.0           # sensor noise: std added to recorded states (real-world)
 
 # Evaluation settings (Axes 2 & 3: rollout stability and energy drift)
 eval:

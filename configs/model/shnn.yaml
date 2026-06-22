@@ -1,0 +1,9 @@
+# configs/model/shnn.yaml
+name: "Structured_HNN"
+type: "physics_informed"
+
+# Hamiltonian model with a learned, configuration-dependent mass matrix M(q)
+# and potential V(q) -- the fair counterpart to the naive (identity-mass) HNN.
+hidden_layers: [64, 64]
+activation: "Softplus"
+learn_mass_matrix: true

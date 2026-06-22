@@ -1,0 +1,7 @@
+# configs/model/poly.yaml
+name: "Polynomial"
+type: "black_box"
+
+# Closed-form ridge regression on a degree-2 polynomial feature expansion.
+degree: 2
+ridge: 1.0e-4

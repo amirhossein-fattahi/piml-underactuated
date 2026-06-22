@@ -51,18 +51,33 @@ def wrap_state_angles(state):
 # ---------------------------------------------------------------- data handling
 def generate_dataset(cfg):
     """Rolls out the true simulator under random torques to build a
-    (state, action, next_state) dataset. Returns a dict of tensors."""
+    (state, action, next_state) dataset. Returns a dict of tensors.
+
+    Optional real-world noise: ``process_std`` adds a random state kick after
+    each step (unmodelled forces, integration error), and ``obs_std`` adds
+    sensor noise to the *recorded* states (encoder/tachometer error). The true
+    dynamics still drive the rollout; only what the learner sees is corrupted.
+    """
     set_seed(cfg.seed)
     env = build_env(cfg)
+    process_std = cfg.data.get("process_std", 0.0)
+    obs_std = cfg.data.get("obs_std", 0.0)
+
     states, actions, next_states = [], [], []
     for _ in range(cfg.data.num_episodes):
         state = env.reset()
         for _ in range(cfg.data.episode_length):
             action = env.sample_random_action()
             nxt = env.step(state, action)
-            states.append(state.clone())
+            if process_std > 0:
+                nxt = nxt + process_std * torch.randn(4)
+            # Record (possibly noisy) observations; the propagated state is the
+            # clean nxt so process noise accumulates physically.
+            s_obs = state + obs_std * torch.randn(4) if obs_std > 0 else state
+            n_obs = nxt + obs_std * torch.randn(4) if obs_std > 0 else nxt
+            states.append(s_obs.clone())
             actions.append(action.clone())
-            next_states.append(nxt.clone())
+            next_states.append(n_obs.clone())
             state = nxt
     return {
         "states": torch.stack(states),

@@ -2,13 +2,17 @@
 from .mlp import VanillaMLP
 from .lnn import LagrangianNN
 from .hnn import HamiltonianNN
+from .hnn_structured import StructuredHNN
 from .gp import VanillaGP
 from .lgp import LagrangianGP
+from .poly import PolynomialDynamics
 
 MODEL_REGISTRY = {
     "Vanilla_MLP": VanillaMLP,
+    "Polynomial": PolynomialDynamics,
     "Lagrangian_NN": LagrangianNN,
     "Hamiltonian_NN": HamiltonianNN,
+    "Structured_HNN": StructuredHNN,
     "Vanilla_GP": VanillaGP,
     "Lagrangian_GP": LagrangianGP,
 }
@@ -29,5 +33,6 @@ def build_model(cfg):
         "learning_rate": cfg.get("learning_rate", 1e-3),
         "batch_size": cfg.get("batch_size", 256),
         "lnn_epochs": cfg.model.get("lnn_epochs", 100),
+        "ridge": cfg.model.get("ridge", 1e-4),
     }
     return MODEL_REGISTRY[name](model_cfg)
