@@ -53,7 +53,8 @@ def main():
              "Lagrangian GP) on Acrobot and Pendubot, across four axes.\n"]
 
     # --- Dynamics table at the largest budget per env ---
-    dyn = _read_csv(OUT / "results" / "summary.csv")
+    dyn = [r for r in _read_csv(OUT / "results" / "summary.csv")
+           if r.get("noise", "clean") == "clean"]
     if dyn:
         envs = sorted({r["env"] for r in dyn})
         for env in envs:
