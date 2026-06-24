@@ -34,7 +34,7 @@ Hamiltonian Neural Network (HNN), a structured HNN with a learned mass matrix,
 and a Lagrangian-informed GP (LGP)---on two underactuated systems, the Acrobot
 and the Pendubot. We evaluate four axes: one-step accuracy, long-horizon rollout
 stability (valid prediction time), energy drift, and downstream energy-based
-swing-up control, across five seeds, four data budgets, and both clean and
+swing-up control, across five seeds, three data budgets, and both clean and
 sensor/process-noise conditions. We find a nuanced map rather than a single
 winner. The LNN, whose learned positive-definite mass matrix matches these
 systems, is the most accurate and energy-consistent and never diverges. The GP
@@ -71,7 +71,11 @@ In practice it is rarely obvious \emph{when} a prior is worth its complexity, or
 whether a prior whose assumptions are violated by the real system can hurt. Most
 papers introduce one physics-informed model and show it beats a baseline on a
 favourable task; what is missing is a controlled, like-for-like comparison across
-priors, evaluation criteria, data budgets, and noise conditions.
+priors, evaluation criteria, data budgets, and noise conditions. Underactuated
+systems such as the Acrobot and Pendubot are an ideal stress test: they are
+low-dimensional yet chaotic, have configuration-dependent inertia, and admit a
+demanding downstream control task (swing-up) that depends on the learned model's
+physical consistency, not just its one-step error.
 
 We provide such a comparison and summarise it as a map of when physics priors
 help, with four findings:
@@ -85,121 +89,219 @@ $20$--$32\%$ of rollouts. A controlled ablation pinpoints the assumption: giving
 the Hamiltonian model a learned mass matrix removes the failure.
 \item \textbf{Uncertainty buys stability and data efficiency.} The GP is the most
 data-efficient model and yields the most stable rollouts; combining it with
-Lagrangian structure (the LGP) gives the best overall blend.
+Lagrangian structure (the LGP) gives the best overall blend on clean data.
 \item \textbf{Robustness has costs.} Under noise the GP is the most robust, while
 the LGP's GP residual overfits noise and loses rollout stability.
 \end{enumerate}
-All experiments are reproducible from a released, configuration-driven pipeline.
+Our contribution is the controlled study and the resulting map, together with a
+released, configuration-driven pipeline that regenerates every result.
 
 \section{Related Work}
 \textbf{Physics-informed neural dynamics.} Deep Lagrangian Networks (DeLaN)
 \cite{lutter2019} learn the mass matrix and potential of a Lagrangian and recover
 the equations of motion by automatic differentiation; Lagrangian Neural Networks
-\cite{cranmer2020} generalise the idea. Hamiltonian Neural Networks
-\cite{greydanus2019} learn a Hamiltonian and integrate the symplectic flow,
-conserving energy but requiring canonical coordinates; symplectic and
-variational-integrator variants extend them to control and rigid bodies
-\cite{zhong2020,saemundsson2020}. Physics-informed neural networks more broadly
-embed governing equations into the loss \cite{raissi2019,karniadakis2021}.
+\cite{cranmer2020} generalise the idea to an arbitrary learned Lagrangian.
+Hamiltonian Neural Networks \cite{greydanus2019} learn a Hamiltonian and
+integrate the symplectic flow, conserving energy by construction but requiring
+canonical coordinates; symplectic and variational-integrator variants extend them
+to control and rigid bodies \cite{zhong2020,saemundsson2020}. Physics-informed
+neural networks more broadly embed governing equations into the loss
+\cite{raissi2019,karniadakis2021}.
 
 \textbf{Gaussian-process and classical dynamics.} GPs provide calibrated
 uncertainty and data efficiency for model learning \cite{rasmussen2006,nguyen2011}
 and underpin sample-efficient control such as PILCO \cite{deisenroth2011}. Sparse
-regression on a feature library (SINDy-style) is a classical system-ID baseline
-\cite{brunton2016}. Hybrid schemes learn a data-driven residual on top of a
-parametric or structured model.
+regression on a feature library (SINDy) is a classical system-identification
+baseline \cite{brunton2016}. Hybrid schemes learn a data-driven residual on top of
+a parametric or structured model; our Lagrangian-informed GP is an instance with a
+learned-Lagrangian mean.
 
-\textbf{Underactuated swing-up.} The Acrobot and Pendubot are standard
-benchmarks; energy-shaping controllers swing them toward upright by regulating
-total energy, typically with an LQR catch for final balancing
-\cite{spong1995,tedrake}. We use swing-up as a downstream task that stresses the
-\emph{usefulness} of a learned model, not only its predictive error.
+\textbf{Underactuated swing-up.} The Acrobot and Pendubot are standard benchmarks;
+energy-shaping controllers swing them toward upright by regulating total energy,
+typically with an LQR catch for final balancing \cite{spong1995,tedrake}. We use
+swing-up as a downstream task that stresses the \emph{usefulness} of a learned
+model, not only its predictive error.
 
-We hold data, integrator, training objective, and evaluation fixed across all
-models, enabling a fair comparison rather than a single favourable demonstration.
+Relative to this literature we hold data, integrator, training objective, and
+evaluation fixed across seven models and report multiple axes, data budgets and
+noise conditions, enabling a fair comparison rather than a single favourable
+demonstration.
 
-\section{Systems and Problem Setup}
-We study two planar double pendulums with a single actuator, sharing the
-manipulator equation
+\section{Background and Problem Setup}
+\subsection{Underactuated double pendulums}
+We study two planar double pendulums with a single actuator. Their dynamics follow
+the manipulator equation
 \begin{equation}
+\label{eq:manip}
 M(q)\,\ddot q + C(q,\dot q)\,\dot q + g(q) = B\,u,
 \end{equation}
-with joint angles $q=(q_1,q_2)$, mass matrix $M(q)\succ 0$, Coriolis term $C$,
-gravity $g(q)=\partial V/\partial q$, and actuation matrix $B$. The
-\textbf{Acrobot} is actuated only at the elbow ($B=[0,1]^\top$) and the
-\textbf{Pendubot} only at the shoulder ($B=[1,0]^\top$); the other joint is
-passive. The state is $x=(q_1,q_2,\dot q_1,\dot q_2)$ and $u$ is a scalar torque;
-we integrate with RK4 at $\Delta t=10^{-2}\,$s. Given transitions
-$(x_t,u_t,x_{t+1})$ under random torques, the task is to learn a model that
-predicts accelerations, hence the next state via the same integrator. A single
-integrator and one-step objective are used for every model, so behavioural
-differences are attributable to the prior.
+with joint angles $q=(q_1,q_2)$, symmetric positive-definite mass matrix
+$M(q)\succ 0$, Coriolis/centrifugal term $C(q,\dot q)$, gravity
+$g(q)=\partial V/\partial q$ derived from a potential $V(q)$, and actuation matrix
+$B\in\mathbb{R}^2$. The \textbf{Acrobot} is actuated only at the elbow
+($B=[0,1]^\top$) and the \textbf{Pendubot} only at the shoulder ($B=[1,0]^\top$);
+the remaining joint is passive, making both systems underactuated. The state is
+$x=(q_1,q_2,\dot q_1,\dot q_2)$ and the control $u$ is a scalar torque. The total
+mechanical energy is $E(x)=\tfrac12\dot q^\top M(q)\dot q + V(q)$, which is
+conserved when $u=0$. We integrate the true dynamics with a fourth-order
+Runge--Kutta (RK4) scheme at $\Delta t=10^{-2}\,$s.
+
+\subsection{Lagrangian and Hamiltonian structure}
+The same dynamics admit two structured parameterizations that the models below
+exploit. The Lagrangian $\mathcal{L}=\tfrac12\dot q^\top M(q)\dot q - V(q)$ yields
+the Euler--Lagrange equations, equivalent to \eqref{eq:manip} with
+$C\dot q = \dot M\dot q - \tfrac12\nabla_q(\dot q^\top M\dot q)$. The Hamiltonian
+$H(q,p)=\tfrac12 p^\top M(q)^{-1}p + V(q)$, with canonical momentum $p=M(q)\dot q$,
+yields Hamilton's equations $\dot q=\partial H/\partial p$,
+$\dot p=-\partial H/\partial q + Bu$. The two are related by the Legendre
+transform, so a model that learns $M(q)$ and $V(q)$ produces the \emph{same}
+equations of motion whether written in Lagrangian or Hamiltonian form---a fact we
+use to construct a fair Hamiltonian baseline.
+
+\subsection{Learning problem}
+Given transitions $(x_t,u_t,x_{t+1})$ collected under random torques, the task is
+to learn $\hat f$ predicting the state derivative (hence $x_{t+1}$ via the same
+RK4 integrator). A single integrator and one-step objective are used for every
+model, so behavioural differences are attributable to the prior, not the training
+setup.
 
 \section{The Model Zoo}
-All models map $(x,u)$ to a state derivative and are rolled out with RK4.
+All models map $(x,u)$ to a state derivative and are rolled out with RK4. Neural
+models use two hidden layers of $64$ units; Lagrangian/Hamiltonian models use
+Softplus activations (twice differentiable, required for the autograd-derived
+forces).
 
-\textbf{Vanilla MLP (black box).} Regresses joint accelerations directly; no
-physical structure.
+\textbf{Vanilla MLP (black box).} A $128$-$128$-$128$ network regresses joint
+accelerations directly; no physical structure.
 
 \textbf{Polynomial (system ID).} Closed-form ridge regression of accelerations on
-a degree-2 polynomial expansion of $[\sin q_1,\cos q_1,\sin q_2,\cos q_2,\dot
-q_1,\dot q_2,u]$; a cheap classical baseline.
+a degree-2 polynomial expansion of the features
+$\phi=[\sin q_1,\cos q_1,\sin q_2,\cos q_2,\dot q_1,\dot q_2,u]$; a cheap classical
+baseline ($\ell_2$ penalty $10^{-4}$).
 
 \textbf{Gaussian Process (GP).} An exact GP with an ARD-RBF kernel regresses each
-acceleration component from the same features, fit by marginal likelihood; the
-$(\sin,\cos)$ encoding respects periodicity. We cap the training set at $1000$
-points for tractability.
+acceleration component from $\phi$, fit by marginal likelihood; the $(\sin,\cos)$
+encoding respects angle periodicity. We cap the training set at $1000$ points for
+tractability of the $O(n^3)$ solve.
 
 \textbf{Lagrangian Neural Network (LNN).} Two networks output a Cholesky factor of
 $M(q)=L(q)L(q)^\top+\epsilon I\succ 0$ and a potential $V(q)$; the Coriolis and
 gravity terms follow by automatic differentiation and the acceleration from
-$M\ddot q = Bu - C\dot q - g$. The known $B$ is supplied as a prior.
+\eqref{eq:manip}. The known $B$ is supplied as a prior.
 
 \textbf{Naive HNN.} A scalar Hamiltonian $H(q,p)$ with the identity-mass
-convention $p:=\dot q$, integrated along the symplectic flow $\dot q=\partial
-H/\partial p,\ \dot p=-\partial H/\partial q + Bu$. It does \emph{not} learn a
-configuration-dependent mass matrix.
+convention $p:=\dot q$, integrated along the symplectic flow. It does \emph{not}
+learn a configuration-dependent mass matrix.
 
-\textbf{Structured HNN.} A Hamiltonian model that \emph{learns} $M(q)$ and $V(q)$,
+\textbf{Structured HNN.} A Hamiltonian model that \emph{learns} $M(q)$ and $V(q)$
 with canonical momentum $p=M(q)\dot q$. By the Legendre transform its equations of
-motion coincide with the LNN's; we include it as a controlled ablation of the
-naive HNN's identity-mass assumption.
+motion coincide with the LNN's; we include it as a controlled ablation that
+isolates the naive HNN's identity-mass assumption.
 
 \textbf{Lagrangian-informed GP (LGP).} A hybrid: an LNN supplies a physics mean
 and a GP models the residual acceleration, $\ddot q = \ddot q_{\mathrm{LNN}} +
 \mathrm{GP}_{\mathrm{res}}$, keeping structure while letting the GP correct what
 the structural model misses.
 
-The structured networks conserve their own learned energy to $\sim\!10^{-7}$ over
-$200$ steps before training, confirming the autograd equations of motion.
+\subsection{Structured dynamics in detail}
+The LNN and Structured HNN share the same learned ingredients. To guarantee a
+physically valid, invertible inertia, the mass matrix is parameterized through a
+Cholesky factor,
+\begin{equation}
+M(q) = L(q)L(q)^\top + \epsilon I,
+\end{equation}
+where $L(q)$ is lower-triangular with positive (Softplus) diagonal and
+$\epsilon=10^{-2}$ floors the smallest eigenvalue for a well-conditioned solve.
+Given $M(q)$ and $V(q)$, the gravity and Coriolis terms are obtained by automatic
+differentiation,
+\begin{equation}
+g(q)=\nabla_q V,\qquad
+[C(q,\dot q)\dot q]_i = (\dot M\dot q)_i - \tfrac12\,\dot q^\top
+   \frac{\partial M}{\partial q_i}\dot q,
+\end{equation}
+with $\dot M = \sum_k (\partial M/\partial q_k)\,\dot q_k$, and the acceleration
+solves $M\ddot q = Bu - C\dot q - g$. The Structured HNN evaluates the
+algebraically equivalent Hamiltonian form
+$\ddot q = M^{-1}\!\left(-\partial H/\partial q|_p + Bu - \dot M\dot q\right)$;
+both conserve their own learned energy to $\sim\!10^{-7}$ over $200$ steps even
+before training, confirming the correctness of the autograd equations of motion.
+The naive HNN omits $M(q)$, setting $p:=\dot q$.
 
-\section{Experimental Setup}
-\textbf{Data.} Per system we generate $8000$ transitions from random rollouts; a
-$20\%$ tail is held out for one-step evaluation and the pool is subsampled to
-budgets of $250,1000,4000$ to probe data efficiency. The noisy condition adds
-process noise (a random state kick each step) and sensor noise (added to recorded
-states), both with std $0.02$.
+\section{Evaluation Protocol}
+\textbf{Data.} Per system we generate $8000$ transitions from random short
+rollouts under uniform random torques; a $20\%$ tail is held out for one-step
+evaluation and the remaining pool is randomly subsampled to budgets of
+$250,1000,4000$ to probe data efficiency. The \emph{noisy} condition adds process
+noise---a Gaussian state kick after each step, modelling unmodelled forces---and
+sensor noise added to the recorded states, both with standard deviation $0.02$.
 
 \textbf{Training.} Each model minimises a one-step angle-aware MSE between the
-RK4-integrated prediction and the recorded next state (GP-style models are fit by
-marginal likelihood). We use $100$ epochs, Adam, gradient clipping, and
-\emph{five} seeds per configuration.
+RK4-integrated prediction and the recorded next state (GP-style models are instead
+fit by marginal likelihood). The angle-aware loss wraps angular errors to
+$[-\pi,\pi]$ so the $\pm\pi$ discontinuity does not corrupt the gradient. We use
+$100$ epochs, Adam, gradient clipping, and \emph{five} seeds per configuration.
 
-\textbf{Axes.} (1)~one-step MSE; (2)~\emph{valid prediction time}, the steps a
-free-swing rollout tracks the truth before the per-step error exceeds a threshold
-(robust on chaotic systems, where raw long-horizon MSE saturates); (3)~energy
-drift over the rollout, plus the fraction of rollouts that diverge;
-(4)~swing-up control (Section~\ref{sec:control}). Rollouts use identical fixed
-initial conditions across models.
+\textbf{Implementation.} The MLP has three $128$-unit ReLU layers; the structured
+networks use two $64$-unit Softplus layers each for $M(q)$ and $V(q)$. We train
+with Adam (learning rate $10^{-3}$, batch size $256$) and clip gradient norms to
+$10$. The GP uses an ARD-RBF kernel with per-feature lengthscales and signal/noise
+variances optimised by $25$ marginal-likelihood steps in double precision; the LGP
+fits its residual GP on the same capped subsample. Process and sensor noise are
+zero-mean Gaussian (std $0.02$) on the four state components, and a rollout is
+declared diverged if any state exceeds $10^{2}$ in magnitude or becomes
+non-finite. All experiments run on CPU.
+
+\textbf{Metrics.} (1)~\emph{One-step MSE} on the held-out set.
+(2)~\emph{Valid prediction time}: the number of steps an autoregressive free-swing
+($u\!=\!0$) rollout tracks the truth before the per-step error first exceeds a
+fixed threshold. On chaotic systems raw long-horizon MSE saturates (two nearby
+trajectories decorrelate and the error reaches a ceiling), so it cannot
+discriminate models; valid prediction time does. (3)~\emph{Energy drift}: the
+range of the true energy $E(x)$ along the model's free rollout, which should be
+zero; we also report the fraction of rollouts that diverge (state magnitude or
+non-finite values exceeding a bound). (4)~\emph{Swing-up control}
+(Section~\ref{sec:control}). All rollout evaluations use identical fixed initial
+conditions across models for fairness.
 
 \section{Results}
-\subsection{Prediction, Stability, and Energy (Axes 1--3)}
-Table~\ref{tab:dynamics} reports the clean condition at the largest budget;
-Fig.~\ref{fig:sweep} shows the data-budget sweep.
+\subsection{One-step accuracy and data efficiency}
+Table~\ref{tab:budget} reports one-step MSE versus data budget on the Acrobot. At
+the smallest budget ($250$ points) the GP, LGP and LNN are already an order of
+magnitude more accurate than the MLP and naive HNN; the MLP only becomes
+competitive at $4000$ points. The Polynomial baseline barely improves with data
+(its fixed feature basis underfits), and the GP plateaus once it hits its
+$1000$-point cap. Physics structure and GP smoothing thus pay off most precisely
+in the low-data regime---the regime that matters for real robots.
+
+\begin{table}[t]
+\caption{One-step MSE vs.\ data budget (Acrobot, clean, mean over five seeds).
+Physics/GP models dominate at low data; the MLP catches up only with more data.}
+\label{tab:budget}
+\centering
+\begin{tabular}{lccc}
+\toprule
+Model & $n{=}250$ & $n{=}1000$ & $n{=}4000$ \\
+\midrule
+Vanilla MLP    & $7.3\times10^{-2}$ & $4.7\times10^{-2}$ & $6.1\times10^{-3}$ \\
+Polynomial     & $5.1\times10^{-2}$ & $4.4\times10^{-2}$ & $4.2\times10^{-2}$ \\
+Vanilla GP     & $2.1\times10^{-2}$ & $8.4\times10^{-3}$ & $8.5\times10^{-3}$ \\
+Naive HNN      & $8.3\times10^{-2}$ & $4.6\times10^{-2}$ & $1.6\times10^{-2}$ \\
+Lagrangian NN  & $2.7\times10^{-2}$ & $8.5\times10^{-3}$ & $\mathbf{1.4\times10^{-3}}$ \\
+Lagrangian GP  & $\mathbf{1.9\times10^{-2}}$ & $\mathbf{2.9\times10^{-3}}$ & $1.5\times10^{-3}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Long-horizon stability and energy}
+Table~\ref{tab:dynamics} reports all three dynamics axes at the largest budget,
+and Fig.~\ref{fig:sweep} the full sweep. Fig.~\ref{fig:rollout} illustrates the
+mechanism: on a free swing both the MLP and LNN trajectories eventually decorrelate
+from the truth (chaos), but the MLP's \emph{energy} balloons while the LNN's stays
+near the conserved value---the LNN's error is physically constrained.
 
 \begin{table*}[t]
-\caption{Dynamics axes (clean, $n{=}4000$, mean over five seeds). Arrows mark
-lower ($\downarrow$) / higher ($\uparrow$) is better. ``Div.'' is the fraction of
+\caption{Dynamics axes (clean, $n{=}4000$, mean over five seeds). Arrows mark lower
+($\downarrow$) / higher ($\uparrow$) is better. ``Div.'' is the fraction of
 rollouts that diverged. The Structured HNN coincides with the LNN (Legendre
 duality) and is analysed separately in Table~\ref{tab:hnn}.}
 \label{tab:dynamics}
@@ -232,35 +334,39 @@ System & Model & One-step MSE $\downarrow$ & Valid steps $\uparrow$ & Energy dri
 \includegraphics[width=0.49\textwidth]{figures/sweep_Acrobot.png}
 \includegraphics[width=0.49\textwidth]{figures/sweep_Pendubot.png}
 \caption{Data-budget sweep (clean), Acrobot (left) and Pendubot (right): each
-dynamics axis versus the number of training transitions (log--log), mean over
-five seeds with standard-deviation error bars.}
+dynamics axis versus the number of training transitions (log--log), mean over five
+seeds with standard-deviation error bars.}
 \label{fig:sweep}
 \end{figure*}
 
-\textbf{Accuracy and energy.} The LNN is the most accurate model on both systems
-and among the lowest in energy drift. The Polynomial baseline is weakest, with
-large drift and $16$--$36\%$ divergence. The MLP is a competent middle performer.
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/rollout_example.png}
+\caption{Free-swing rollout on the Acrobot. Both learned trajectories eventually
+decorrelate from the truth (left, chaos), but the MLP's total energy diverges while
+the LNN stays near the conserved value (right). Angles are wrapped to $[-\pi,\pi]$.}
+\label{fig:rollout}
+\end{figure}
 
-\textbf{Stability.} On the chaotic free-swing task the GP gives by far the
-longest valid prediction time ($>\!2.5\times$ the MLP) despite larger one-step
-error: GP smoothing damps the error growth that destabilises the MLP. The LGP
+The LNN is the most accurate model and among the lowest in energy drift on both
+systems. On the chaotic free-swing task the GP gives by far the longest valid
+prediction time ($>\!2.5\times$ the MLP) despite larger one-step error: smoothing
+toward the GP prior damps the error growth that destabilises the MLP. The LGP
 combines LNN-level accuracy with high valid time and the lowest energy drift,
-making it the best all-round model on the dynamics axes.
+making it the best all-round model on clean dynamics; on the Pendubot it more than
+doubles the LNN's valid time. The Polynomial baseline is weakest, with large drift
+and $16$--$36\%$ divergence.
 
-\textbf{Data efficiency} (Fig.~\ref{fig:sweep}). At the smallest budget the GP and
-Lagrangian models are already far more accurate than the MLP, whose advantage
-only appears with more data; physics priors and GP smoothing help most when data
-are scarce.
-
-\subsection{The HNN Failure Is the Assumption, Not the Formulation}
+\subsection{The HNN failure is the assumption, not the formulation}
 The naive HNN is the worst structured model: poor one-step accuracy, the fewest
-valid steps, and $20$--$32\%$ divergence (its huge drift values are an artifact
-of these divergences). Table~\ref{tab:hnn} isolates the cause. Replacing the
+valid steps, and $20$--$32\%$ divergence (its huge drift values are an artifact of
+these divergences). Table~\ref{tab:hnn} isolates the cause. Replacing the
 identity-mass assumption with a learned mass matrix---the Structured HNN, which by
 Legendre duality has the same equations of motion as the LNN---removes the failure
 entirely: divergence drops to $0\%$ and valid steps and drift match the LNN. The
-naive HNN's failure is therefore due to the violated identity-mass assumption,
-not to the Hamiltonian formulation.
+naive HNN's failure is therefore due to the violated identity-mass assumption, not
+to the Hamiltonian formulation. This is the practical lesson of the paper in
+miniature: a structured prior helps only when its structural assumptions hold.
 
 \begin{table}[t]
 \caption{HNN ablation on the Acrobot ($n{=}4000$, five seeds). Learning the mass
@@ -278,50 +384,92 @@ Lagrangian NN (reference) & $27.3$ & $7.7$ & $0\%$ \\
 \end{tabular}
 \end{table}
 
-\subsection{Robustness to Noise}
-Table~\ref{tab:noise} reports the clean$\to$noisy change at $n{=}4000$. All
-models degrade gracefully (one-step error roughly doubles). Two effects stand
-out: the GP remains the most stable in absolute terms, while the LGP's GP
-residual \emph{overfits} the noise and loses rollout stability (valid steps fall
-from $52.9$ to $36.4$ on the Acrobot), eroding its clean-condition advantage.
-Hard structural priors (LNN) are comparatively noise-tolerant.
+\subsection{Robustness to noise}
+Table~\ref{tab:noise} reports the clean$\to$noisy change for both systems at
+$n{=}4000$. All models degrade gracefully---one-step error roughly doubles---but
+two effects stand out. The GP remains the most stable rollout model in absolute
+terms. The LGP's GP residual, by contrast, \emph{overfits} the noise: its valid
+prediction time collapses (Acrobot $52.9\!\to\!36.4$, Pendubot $58.6\!\to\!32.7$),
+erasing the clean-condition advantage that made it the best all-rounder. Hard
+structural priors (LNN) are comparatively noise-tolerant, even gaining valid steps
+as the injected noise acts as mild regularization. The practical implication is
+that a learned residual is a liability under observation noise, whereas a pure
+structural prior degrades benignly.
 
 \begin{table}[t]
-\caption{Noise robustness on the Acrobot ($n{=}4000$): one-step MSE and valid
-steps, clean $\to$ noisy.}
+\caption{Noise robustness at $n{=}4000$: one-step MSE and valid steps,
+clean $\to$ noisy (mean over five seeds).}
 \label{tab:noise}
 \centering
-\begin{tabular}{lcc}
+\begin{tabular}{llcc}
 \toprule
-Model & One-step MSE (clean$\to$noisy) & Valid steps (clean$\to$noisy) \\
+System & Model & One-step MSE & Valid steps \\
 \midrule
-Vanilla MLP   & $6.1\!\times\!10^{-3}\!\to\!1.0\!\times\!10^{-2}$ & $25.8 \to 29.6$ \\
-Vanilla GP    & $8.5\!\times\!10^{-3}\!\to\!1.3\!\times\!10^{-2}$ & $67.6 \to 59.3$ \\
-Lagrangian NN & $1.4\!\times\!10^{-3}\!\to\!3.3\!\times\!10^{-3}$ & $27.3 \to 35.4$ \\
-Lagrangian GP & $1.5\!\times\!10^{-3}\!\to\!3.3\!\times\!10^{-3}$ & $52.9 \to 36.4$ \\
+\multirow{4}{*}{Acrobot}
+ & Vanilla MLP   & $6.1\!\to\!10.2\;(\times10^{-3})$ & $25.8 \to 29.6$ \\
+ & Vanilla GP    & $8.5\!\to\!13.4\;(\times10^{-3})$ & $67.6 \to 59.3$ \\
+ & Lagrangian NN & $1.4\!\to\!3.3\;(\times10^{-3})$ & $27.3 \to 35.4$ \\
+ & Lagrangian GP & $1.5\!\to\!3.3\;(\times10^{-3})$ & $52.9 \to 36.4$ \\
+\midrule
+\multirow{4}{*}{Pendubot}
+ & Vanilla MLP   & $7.2\!\to\!9.6\;(\times10^{-3})$ & $28.0 \to 28.3$ \\
+ & Vanilla GP    & $8.8\!\to\!10.0\;(\times10^{-3})$ & $71.4 \to 60.0$ \\
+ & Lagrangian NN & $2.6\!\to\!4.1\;(\times10^{-3})$ & $26.9 \to 28.4$ \\
+ & Lagrangian GP & $2.3\!\to\!3.9\;(\times10^{-3})$ & $58.6 \to 32.7$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Downstream Swing-Up Control (Axis 4)}
+\subsection{Computational cost}
+Table~\ref{tab:cost} lists wall-clock training time (Acrobot, $n{=}1000$, $100$
+epochs, CPU). The closed-form Polynomial is essentially free; the MLP, GP and naive
+HNN are cheap. The structured models (LNN, Structured HNN, LGP) cost $3$--$4\times$
+the MLP because each forward pass differentiates the learned mass matrix and
+potential. The LGP additionally trains an internal LNN, making it the most
+expensive. These costs are modest in absolute terms but should be weighed against
+the accuracy/stability gains when choosing a model.
+
+\begin{table}[t]
+\caption{Training time (Acrobot, $n{=}1000$, $100$ epochs, single CPU).}
+\label{tab:cost}
+\centering
+\begin{tabular}{lc}
+\toprule
+Model & Training time (s) \\
+\midrule
+Polynomial      & $0.1$ \\
+Naive HNN       & $4.6$ \\
+Vanilla MLP     & $6.4$ \\
+Vanilla GP      & $6.9$ \\
+Structured HNN  & $19.8$ \\
+Lagrangian NN   & $20.3$ \\
+Lagrangian GP   & $23.8$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Downstream swing-up control}
 \label{sec:control}
 We drive an energy-shaping controller on the \emph{true} plant using a model's
 energy estimate,
 \begin{equation}
+\label{eq:control}
 u = k_e\,(E_{\mathrm{top}}-E_{\mathrm{model}}(x))\,\dot q_{\mathrm{act}}
    - k_p\,q_{\mathrm{act}} - k_d\,\dot q_{\mathrm{act}},
 \end{equation}
-clipped to a torque limit, with $E_{\mathrm{top}}$ the upright energy under the
-same model. Only models with an energy function (LNN, Structured HNN, Naive HNN,
-LGP) can drive it; the MLP, Polynomial and GP cannot, which is itself a result.
-We report the mean normalised tip height reached ($0$ down, $1$ upright)---a
-continuous, robust measure of swing-up quality---and a success rate, with a
+clipped to a torque limit, where $E_{\mathrm{top}}$ is the upright energy under the
+\emph{same} model (so any constant energy offset cancels) and $q_{\mathrm{act}}$ is
+the actuated joint. The law pumps energy toward the upright level while damping the
+actuated joint. Only models with an energy function (LNN, Structured HNN, Naive
+HNN, LGP) can drive it; the MLP, Polynomial and GP cannot, which is itself a
+result. We report the mean normalised tip height reached ($0$ down, $1$ upright)---
+a continuous, robust measure of swing-up quality---and a success rate, with a
 true-energy Oracle as the ceiling (Table~\ref{tab:control}, Fig.~\ref{fig:control}).
 
 \begin{table}[t]
-\caption{Energy-based swing-up (five seeds). Mean tip height and success rate;
-the Oracle uses the true energy. Black-box models have no energy function (N/A).
-The Structured HNN matches the LNN.}
+\caption{Energy-based swing-up (five seeds). Mean tip height and success rate; the
+Oracle uses the true energy. Black-box models have no energy function (N/A). The
+Structured HNN matches the LNN.}
 \label{tab:control}
 \centering
 \begin{tabular}{llcc}
@@ -353,45 +501,52 @@ Black-box models are absent (no energy function).}
 \end{figure}
 
 Models with an accurate energy (LNN, LGP, Structured HNN) swing the tip to
-$\sim\!65\%$ of full height, well above the naive HNN; black-box models cannot
-attempt the task. No learned model matches the Oracle, and robustly
-\emph{balancing} the underactuated systems at the top---which requires an LQR
-catch fed by precise swing-up entry---remains hard; we therefore treat the
-continuous tip-height as the primary control metric and provide an optional LQR
-catch in the released code. The ranking nonetheless tracks energy-model quality,
-connecting predictive accuracy to downstream usefulness.
+$\sim\!65\%$ of full height, well above the naive HNN, whose unreliable energy
+yields the worst control; the black-box models cannot attempt the task at all. No
+learned model matches the Oracle, and robustly \emph{balancing} the underactuated
+systems at the top---which requires an LQR catch fed by a precise, low-velocity
+swing-up entry---remains hard; we therefore treat the continuous tip-height as the
+primary control metric and provide an optional LQR catch in the released code. The
+ranking nonetheless tracks energy-model quality, directly connecting predictive
+consistency to downstream usefulness.
 
 \section{Discussion: A Map of When Physics Priors Help}
-Across the four axes a consistent picture emerges. \emph{First}, physics priors
-help most when their structure matches the system: the LNN's learned
-positive-definite, configuration-dependent mass matrix is the single most valuable
-ingredient, and the Structured-HNN ablation shows the same structure recovers a
-failing model. \emph{Second}, a mismatched prior is actively harmful---the naive
-HNN's identity-mass assumption makes it worse than a black box and unstable.
+Across the four axes a consistent picture emerges.
+\emph{First}, physics priors help most when their structure matches the system:
+the LNN's learned positive-definite, configuration-dependent mass matrix is the
+single most valuable ingredient, driving its wins on accuracy, energy and control,
+and the Structured-HNN ablation shows the same structure rescues a failing model.
+\emph{Second}, a mismatched prior is actively harmful---the naive HNN's
+identity-mass assumption makes it worse than a black box and unstable.
 \emph{Third}, the benefit of any prior is largest with scarce data and on
 long-horizon, energy-sensitive tasks; at high data with only one-step accuracy in
-view, the MLP is competitive. \emph{Fourth}, uncertainty-aware models (GPs) buy
-rollout stability and data efficiency complementary to hard priors, and combining
-them (the LGP) is best on clean dynamics---but its residual overfits noise, a
-robustness cost. No single model wins everything, which is the practical guidance
-a practitioner needs.
+view, the black-box MLP is competitive, at a fraction of the training cost.
+\emph{Fourth}, uncertainty-aware models (GPs) buy rollout stability and data
+efficiency complementary to hard priors, and combining the two (the LGP) is best on
+clean dynamics---but its residual overfits noise, a robustness cost a practitioner
+must weigh. No single model wins everything; the practical takeaway is to match the
+prior to the data regime, horizon, noise level, and downstream task.
 
 \section{Limitations and Future Work}
-Our study is in simulation on two planar systems. Absolute swing-up success is
-modest because robust balancing of underactuated systems is a hard control
-problem in its own right; per-model model-predictive control would also let
-black-box models be evaluated downstream. The exact GP is capped in training-set
-size, and is near-deterministic at the largest budget. Extensions include
-additional systems (e.g.\ cart-pole), real-robot data, larger noise sweeps, and
-sparse or deep-kernel GPs to scale the GP and LGP.
+Our study is in simulation on two planar systems with a fixed noise level. Absolute
+swing-up success is modest because robustly balancing underactuated systems is a
+hard control problem in its own right; a model-predictive controller would let
+black-box models also be evaluated downstream and would better exploit accurate
+one-step predictions. The exact GP is capped in training-set size and is
+near-deterministic at the largest budget. Natural extensions include additional
+systems (e.g.\ cart-pole), real-robot data, a sweep over noise levels, sparse or
+deep-kernel GPs to scale the GP and LGP, and propagating GP/ensemble uncertainty
+into the controller.
 
 \section{Conclusion}
 We presented a controlled, reproducible benchmark of seven dynamics models on two
-underactuated systems across four axes, five seeds, and clean and noisy
-conditions. Rather than crowning a method, our results map out \emph{when} physics
-priors help: most when the prior matches the system's structure, when data are
-scarce, and on long-horizon, energy-sensitive tasks---while a mismatched prior can
-be worse than none. We release the pipeline as a reusable testbed.
+underactuated systems across four axes, five seeds, three data budgets, and clean
+and noisy conditions. Rather than crowning a single method, our results map out
+\emph{when} physics priors help: most when the prior matches the system's
+structure, when data are scarce, and on long-horizon, energy-sensitive tasks---
+while a mismatched prior can be worse than none, and a learned residual can be a
+liability under noise. We release the pipeline as a reusable testbed for
+physics-informed dynamics learning.
 
 \section*{Reproducibility}
 Code, configurations, datasets, and the scripts that regenerate every table and
@@ -406,8 +561,8 @@ machine learning,'' \emph{Nature Reviews Physics}, vol.~3, pp.~422--440, 2021.
 pp.~686--707, 2019.
 \bibitem{lutter2019} M.~Lutter, C.~Ritter, and J.~Peters, ``Deep Lagrangian
 Networks,'' in \emph{ICLR}, 2019.
-\bibitem{cranmer2020} M.~Cranmer \emph{et al.}, ``Lagrangian Neural Networks,''
-in \emph{ICLR Workshop}, 2020.
+\bibitem{cranmer2020} M.~Cranmer \emph{et al.}, ``Lagrangian Neural Networks,'' in
+\emph{ICLR Workshop}, 2020.
 \bibitem{greydanus2019} S.~Greydanus, M.~Dzamba, and J.~Yosinski, ``Hamiltonian
 Neural Networks,'' in \emph{NeurIPS}, 2019.
 \bibitem{zhong2020} Y.~D. Zhong, B.~Dey, and A.~Chakraborty, ``Symplectic
